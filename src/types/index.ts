@@ -303,4 +303,3 @@ export interface SearchResultResponse {
   serpApiQueryUsed?: string;
   detectedCategory?: string;
 }
-}
