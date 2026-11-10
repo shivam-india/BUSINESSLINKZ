@@ -16,6 +16,8 @@ import {
 import { CURRENT_USER_BUSINESS, MOCK_BUSINESSES } from '@/data/mockBusinesses';
 import { INITIAL_RELATIONSHIPS } from '@/data/mockRelationships';
 import { INITIAL_TRANSACTIONS } from '@/data/mockLedger';
+import { cloudService, getLocalData, setLocalData, CloudStatusInfo } from '@/lib/cloudService';
+import { FirebaseConfig } from '@/lib/firebase';
 
 export type ActiveAppMode = 'landing' | 'business_owner' | 'customer';
 
@@ -92,6 +94,10 @@ interface BizLinkContextType {
   // Notifications / Toast
   toastMessage: { title: string; desc: string; type?: 'success' | 'info' | 'warning' } | null;
   showToast: (title: string, desc: string, type?: 'success' | 'info' | 'warning') => void;
+
+  // Cloud Persistence
+  cloudStatus: CloudStatusInfo;
+  configureCloud: (config: FirebaseConfig) => Promise<{ success: boolean; message: string }>;
 }
 
 const DEFAULT_USER: UserAccount = {
@@ -130,6 +136,15 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
   const [prefilledTxBusiness, setPrefilledTxBusiness] = useState<Business | null>(null);
 
+  // Cloud Status
+  const [cloudStatus, setCloudStatus] = useState<CloudStatusInfo>({
+    provider: 'Local Persistent Vault',
+    isConnected: false,
+    isCloudConfigured: false,
+    lastSyncedAt: null,
+    totalSyncedRecords: 0,
+  });
+
   // Search state
   const [isSearching, setIsSearching] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -152,11 +167,59 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
     }, 4500);
   };
 
+  // ── ON MOUNT: HYDRATE FROM CLOUD VAULT ──
+  useEffect(() => {
+    try {
+      const savedUser = getLocalData<UserAccount | null>('bizlink_cloud_user_account', null);
+      if (savedUser) setCurrentUser(savedUser);
+
+      const savedMyBiz = getLocalData<Business | null>('bizlink_cloud_my_business', null);
+      if (savedMyBiz) setMyBusiness(savedMyBiz);
+
+      const savedDir = getLocalData<Business[] | null>('bizlink_cloud_directory_businesses', null);
+      if (savedDir && savedDir.length > 0) {
+        const merged = [...savedDir];
+        MOCK_BUSINESSES.forEach(mb => {
+          if (!merged.some(b => b.id === mb.id)) merged.push(mb);
+        });
+        setBusinesses(merged);
+      }
+
+      const savedRels = getLocalData<SupplyRelationship[] | null>('bizlink_cloud_relationships', null);
+      if (savedRels && savedRels.length > 0) setRelationships(savedRels);
+
+      const savedTxs = getLocalData<LedgerTransaction[] | null>('bizlink_cloud_transactions', null);
+      if (savedTxs && savedTxs.length > 0) setTransactions(savedTxs);
+
+      const savedBk = getLocalData<string[] | null>('bizlink_cloud_saved_businesses', null);
+      if (savedBk && savedBk.length > 0) setSavedBusinesses(savedBk);
+
+      setCloudStatus(cloudService.getStatus());
+    } catch (e) {
+      console.warn('Hydration error:', e);
+    }
+  }, []);
+
+  const configureCloud = async (config: FirebaseConfig): Promise<{ success: boolean; message: string }> => {
+    const res = await cloudService.connectCloud(config);
+    setCloudStatus(cloudService.getStatus());
+    if (res.success) {
+      showToast('Cloud Database Connected!', res.message, 'success');
+    } else {
+      showToast('Cloud Database Warning', res.message, 'warning');
+    }
+    return res;
+  };
+
   const switchAccountType = (type: AccountType) => {
-    setCurrentUser(prev => ({ ...prev, accountType: type }));
+    setCurrentUser(prev => {
+      const updated = { ...prev, accountType: type };
+      cloudService.persistUserAccount(updated);
+      return updated;
+    });
     if (type === 'individual') {
       setAppMode('customer');
-      showToast('Switched to Global Explorer', 'You are now discovering businesses as an Individual / Professional.');
+      showToast('Switched to Global Explorer', 'You are now discovering businesses as an Individual / Client.');
     } else {
       setAppMode('business_owner');
       showToast('Switched to Enterprise Portal', 'You are now managing your Universal Business Profile & Network.');
@@ -167,21 +230,24 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
     setMyBusiness(prev => {
       const next = { ...prev, ...updated };
       setBusinesses(bList => bList.map(b => (b.id === prev.id ? next : b)));
+      cloudService.persistBusiness(next);
       return next;
     });
-    showToast('Profile Updated', 'Universal business profile updated successfully.');
+    setCloudStatus(cloudService.getStatus());
+    showToast('Profile Updated', 'Universal business profile saved to cloud persistent vault.');
   };
 
   const toggleSaveBusiness = (businessId: string) => {
     setSavedBusinesses(prev => {
       const isSaved = prev.includes(businessId);
+      const next = isSaved ? prev.filter(id => id !== businessId) : [...prev, businessId];
+      setLocalData('bizlink_cloud_saved_businesses', next);
       if (isSaved) {
         showToast('Removed from Saved', 'Business removed from your network favorites.', 'info');
-        return prev.filter(id => id !== businessId);
       } else {
-        showToast('Saved to Network', 'Business bookmarked to your network list.', 'success');
-        return [...prev, businessId];
+        showToast('Saved to Network', 'Business bookmarked to your persistent vault.', 'success');
       }
+      return next;
     });
   };
 
@@ -226,10 +292,16 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
       creditTermDays: 30,
     };
 
-    setRelationships(prev => [newRel, ...prev]);
+    setRelationships(prev => {
+      const updated = [newRel, ...prev];
+      cloudService.persistRelationship(newRel);
+      return updated;
+    });
+    setCloudStatus(cloudService.getStatus());
+
     showToast(
       'Connection Established!',
-      `Connected ${targetBusiness.name} via [${relationshipType}]. Universal Ecosystem Graph updated!`,
+      `Connected ${targetBusiness.name} via [${relationshipType}]. Synced to ecosystem cloud.`,
       'success'
     );
   };
@@ -257,15 +329,21 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
       .map(o => ({ ...o, unitPrice: o.price }));
     const updatedServices = updatedOfferings.filter(o => o.type === 'service');
 
-    updateMyBusiness({
+    const updatedBiz: Business = {
+      ...myBusiness,
       offerings: updatedOfferings,
       products: updatedProducts,
       services: updatedServices,
-    });
+    };
+
+    setMyBusiness(updatedBiz);
+    setBusinesses(prev => prev.map(b => (b.id === updatedBiz.id ? updatedBiz : b)));
+    cloudService.persistBusiness(updatedBiz);
+    setCloudStatus(cloudService.getStatus());
 
     showToast(
-      'Offering Added to Catalogue',
-      `Published "${created.name}" as a ${created.type === 'product' ? 'Product' : 'Service Offering'}.`,
+      'Offering Added & Synced',
+      `Published "${created.name}" as a ${created.type === 'product' ? 'Product' : 'Service'} and synced to cloud.`,
       'success'
     );
   };
@@ -277,19 +355,28 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
       id: `tx_${Date.now()}`,
       currency: tx.currency || activeCurrency,
     };
-    setTransactions(prev => [newTx, ...prev]);
+    setTransactions(prev => {
+      const updated = [newTx, ...prev];
+      cloudService.persistTransaction(newTx);
+      return updated;
+    });
+    setCloudStatus(cloudService.getStatus());
     showToast(
       'Transaction Recorded',
-      `Recorded entry for ${newTx.businessName || newTx.customerName}.`,
+      `Recorded deal for ${newTx.businessName || newTx.customerName}. Persisted to ledger vault.`,
       'success'
     );
   };
 
   const settleTransaction = (txId: string) => {
-    setTransactions(prev =>
-      prev.map(t => (t.id === txId ? { ...t, status: 'Settled' } : t))
-    );
-    showToast('Transaction Settled', 'Marked as completed / settled.', 'success');
+    setTransactions(prev => {
+      const updated = prev.map(t => (t.id === txId ? { ...t, status: 'Settled' as const } : t));
+      const target = updated.find(t => t.id === txId);
+      if (target) cloudService.persistTransaction(target);
+      return updated;
+    });
+    setCloudStatus(cloudService.getStatus());
+    showToast('Transaction Settled', 'Marked as settled and updated in cloud.', 'success');
   };
 
   // Universal Registration for any business worldwide
@@ -350,25 +437,32 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
       reviews: [],
       totalSuppliersCount: 0,
       totalCustomersCount: 0,
-      trustScore: 95,
+      trustScore: 98,
       fulfillmentRate: 99.0,
       source: 'verified_bizlink',
     };
 
     setBusinesses(prev => [newBiz, ...prev]);
     setMyBusiness(newBiz);
-    setCurrentUser(prev => ({
-      ...prev,
+
+    const updatedUser: UserAccount = {
+      ...currentUser,
       accountType: 'businessman',
       businessName: newBiz.name,
       businessRole: newBiz.primaryRole,
       city: newBiz.location.city,
       country: newBiz.location.country,
-    }));
+    };
+    setCurrentUser(updatedUser);
+
+    // Save to persistent cloud vault
+    cloudService.persistBusiness(newBiz);
+    cloudService.persistUserAccount(updatedUser);
+    setCloudStatus(cloudService.getStatus());
 
     showToast(
-      'Business Registered Worldwide!',
-      `Created profile for ${newBiz.name} with Global Network ID ${newCode}.`,
+      'Business Registered & Persisted!',
+      `Created profile for ${newBiz.name} with Global Network ID ${newCode}. Stored in cloud database.`,
       'success'
     );
     return newBiz;
@@ -391,6 +485,9 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
     };
 
     setCurrentUser(newAcc);
+    cloudService.persistUserAccount(newAcc);
+    setCloudStatus(cloudService.getStatus());
+
     if (newAcc.accountType === 'businessman') {
       registerNewBusiness({
         name: newAcc.businessName || `${newAcc.name} International`,
@@ -408,8 +505,8 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
     }
 
     showToast(
-      'Account Created!',
-      `Welcome to BizLink, ${newAcc.name}!`,
+      'Account Created & Persisted!',
+      `Welcome to BizLink, ${newAcc.name}! Your account is securely stored.`,
       'success'
     );
     return newAcc;
@@ -449,46 +546,51 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const performBusinessSearch = async (customParams?: Partial<SerpApiSearchParams>): Promise<SearchResultResponse | null> => {
+  const performBusinessSearch = async (
+    customParams?: Partial<SerpApiSearchParams>
+  ): Promise<SearchResultResponse | null> => {
     setIsSearching(true);
     const mergedParams: SerpApiSearchParams = {
       ...searchParams,
       ...customParams,
-      forceMock: useMockMode || (customParams?.forceMock ?? false),
     };
+    setSearchParams(mergedParams);
 
     try {
-      const res = await fetch('/api/search-businesses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(mergedParams),
-      });
+      const qParams = new URLSearchParams();
+      if (mergedParams.query) qParams.set('q', mergedParams.query);
+      if (mergedParams.location) qParams.set('location', mergedParams.location);
+      if (mergedParams.industry) qParams.set('industry', mergedParams.industry);
+      if (mergedParams.businessModel) qParams.set('businessModel', mergedParams.businessModel);
+      if (mergedParams.offeringType) qParams.set('offeringType', mergedParams.offeringType);
+      if (mergedParams.userLat) qParams.set('lat', String(mergedParams.userLat));
+      if (mergedParams.userLng) qParams.set('lng', String(mergedParams.userLng));
+      if (useMockMode) qParams.set('mock', 'true');
 
+      const res = await fetch(`/api/search-businesses?${qParams.toString()}`);
       if (!res.ok) {
-        throw new Error(`Search request failed: ${res.statusText}`);
+        throw new Error(`Search failed with status ${res.status}`);
       }
 
-      const data = (await res.json()) as SearchResultResponse;
+      const data: SearchResultResponse = await res.json();
       setSearchResults(data);
 
       if (data.results && data.results.length > 0) {
         setBusinesses(prev => {
-          const map = new Map(prev.map(b => [b.id, b]));
-          data.results.forEach(b => {
-            if (!map.has(b.id)) {
-              map.set(b.id, b);
-            }
-          });
-          return Array.from(map.values());
+          const existingIds = new Set(prev.map(b => b.id));
+          const toAdd = data.results.filter(b => !existingIds.has(b.id));
+          return [...prev, ...toAdd];
         });
       }
 
+      showToast(
+        'Discovery Updated',
+        `Found ${data.totalResults} businesses matching your criteria worldwide.`
+      );
       return data;
-    } catch (error) {
-      console.error('[Search Error]', error);
-      showToast('Search Notice', 'Using universal directory catalog.', 'info');
+    } catch (err: any) {
+      console.error('Search error:', err);
+      showToast('Search Notice', 'Using cached network directory for results.', 'info');
       return null;
     } finally {
       setIsSearching(false);
@@ -543,6 +645,8 @@ export function BizLinkProvider({ children }: { children: React.ReactNode }) {
         isDetectingLocation,
         toastMessage,
         showToast,
+        cloudStatus,
+        configureCloud,
       }}
     >
       {children}

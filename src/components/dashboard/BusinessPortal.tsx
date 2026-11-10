@@ -46,15 +46,15 @@ export function BusinessPortal() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans">
+    <div className="flex min-h-screen text-white font-sans selection:bg-indigo-500 selection:text-white" style={{ background: 'var(--bg-base)' }}>
       {/* Left Sidebar */}
       <Sidebar />
 
       {/* Main Content Pane */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-mesh">
         <DashboardHeader />
 
-        <main className="p-6 md:p-8 flex-1 overflow-y-auto max-w-7xl w-full mx-auto animate-fade-in">
+        <main className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto max-w-7xl w-full mx-auto animate-fade-in-up">
           {renderActiveView()}
         </main>
       </div>

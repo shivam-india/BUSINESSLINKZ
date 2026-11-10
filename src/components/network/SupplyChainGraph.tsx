@@ -7,22 +7,16 @@ import {
   Layers,
   ZoomIn,
   ZoomOut,
-  Maximize2,
   Filter,
   ShieldCheck,
   Star,
   ExternalLink,
   PlusCircle,
   Globe,
-  Briefcase,
-  Users,
-  CheckCircle2,
-  Sparkles,
-  ArrowRight,
   Handshake,
-  FileText,
   Building2,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { UNIVERSAL_RELATIONSHIP_TYPES, GLOBAL_COUNTRIES } from '@/data/taxonomy';
 
@@ -38,16 +32,16 @@ interface NodeCoordinate {
 }
 
 const SECTOR_COLORS: Record<string, { bg: string; border: string; text: string; stroke: string }> = {
-  'Technology, AI & Software': { bg: 'bg-blue-900/60', border: 'border-blue-500', text: 'text-blue-300', stroke: '#3b82f6' },
-  'Healthcare, Biotech & Medical': { bg: 'bg-teal-900/60', border: 'border-teal-500', text: 'text-teal-300', stroke: '#14b8a6' },
-  'Media, Marketing & Creative Design': { bg: 'bg-fuchsia-900/60', border: 'border-fuchsia-500', text: 'text-fuchsia-300', stroke: '#d946ef' },
-  'Manufacturing & Industrial Production': { bg: 'bg-amber-900/60', border: 'border-amber-500', text: 'text-amber-300', stroke: '#f59e0b' },
-  'Logistics, Supply Chain & Transport': { bg: 'bg-sky-900/60', border: 'border-sky-500', text: 'text-sky-300', stroke: '#0284c7' },
-  'Construction, Architecture & Real Estate': { bg: 'bg-orange-900/60', border: 'border-orange-500', text: 'text-orange-300', stroke: '#ea580c' },
-  'Finance, Legal & Professional Advisory': { bg: 'bg-indigo-900/60', border: 'border-indigo-500', text: 'text-indigo-300', stroke: '#6366f1' },
-  'Agriculture, Farming & Environmental': { bg: 'bg-emerald-900/60', border: 'border-emerald-500', text: 'text-emerald-300', stroke: '#10b981' },
-  'Hospitality, Food Science & Tourism': { bg: 'bg-yellow-900/60', border: 'border-yellow-500', text: 'text-yellow-300', stroke: '#eab308' },
-  'Local Services & Skilled Specialists': { bg: 'bg-rose-900/60', border: 'border-rose-500', text: 'text-rose-300', stroke: '#f43f5e' },
+  'Technology, AI & Software': { bg: 'rgba(59,130,246,0.15)', border: 'border-blue-500', text: 'text-blue-300', stroke: '#3b82f6' },
+  'Healthcare, Biotech & Medical': { bg: 'rgba(20,184,166,0.15)', border: 'border-teal-500', text: 'text-teal-300', stroke: '#14b8a6' },
+  'Media, Marketing & Creative Design': { bg: 'rgba(217,70,239,0.15)', border: 'border-fuchsia-500', text: 'text-fuchsia-300', stroke: '#d946ef' },
+  'Manufacturing & Industrial Production': { bg: 'rgba(245,158,11,0.15)', border: 'border-amber-500', text: 'text-amber-300', stroke: '#f59e0b' },
+  'Logistics, Supply Chain & Transport': { bg: 'rgba(2,132,199,0.15)', border: 'border-sky-500', text: 'text-sky-300', stroke: '#0284c7' },
+  'Construction, Architecture & Real Estate': { bg: 'rgba(234,88,12,0.15)', border: 'border-orange-500', text: 'text-orange-300', stroke: '#ea580c' },
+  'Finance, Legal & Professional Advisory': { bg: 'rgba(99,102,241,0.15)', border: 'border-indigo-500', text: 'text-indigo-300', stroke: '#6366f1' },
+  'Agriculture, Farming & Environmental': { bg: 'rgba(16,185,129,0.15)', border: 'border-emerald-500', text: 'text-emerald-300', stroke: '#10b981' },
+  'Hospitality, Food Science & Tourism': { bg: 'rgba(234,179,8,0.15)', border: 'border-yellow-500', text: 'text-yellow-300', stroke: '#eab308' },
+  'Local Services & Skilled Specialists': { bg: 'rgba(244,63,94,0.15)', border: 'border-rose-500', text: 'text-rose-300', stroke: '#f43f5e' },
 };
 
 export function SupplyChainGraph() {
@@ -57,7 +51,6 @@ export function SupplyChainGraph() {
     relationships,
     connectBusinesses,
     setInspectingBusiness,
-    setDashboardView,
   } = useBizLink();
 
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -149,28 +142,26 @@ export function SupplyChainGraph() {
     return { nodes: graphNodes, links: graphLinks };
   }, [businesses, relationships, myBusiness]);
 
-  // Node filter check
-  const filteredNodes = nodes.filter(n => {
-    if (n.isMyBusiness) return true;
-    if (selectedIndustryFilter !== 'all' && n.business.industry !== selectedIndustryFilter) {
-      return false;
-    }
-    return true;
-  });
+  const filteredNodes = useMemo(() => {
+    if (selectedIndustryFilter === 'all') return nodes;
+    return nodes.filter(n => n.isMyBusiness || n.business.industry === selectedIndustryFilter);
+  }, [nodes, selectedIndustryFilter]);
 
-  const nodeMap = new Map(filteredNodes.map(n => [n.id, n]));
+  const filteredLinks = useMemo(() => {
+    return links.filter(l => {
+      if (!l) return false;
+      if (selectedRelFilter !== 'all' && l.relationship.relationshipType !== selectedRelFilter) {
+        return false;
+      }
+      if (selectedIndustryFilter !== 'all') {
+        const matchSource = l.source.business.industry === selectedIndustryFilter || l.source.isMyBusiness;
+        const matchTarget = l.target.business.industry === selectedIndustryFilter || l.target.isMyBusiness;
+        if (!matchSource && !matchTarget) return false;
+      }
+      return true;
+    });
+  }, [links, selectedRelFilter, selectedIndustryFilter]);
 
-  // Link filter check
-  const filteredLinks = links.filter(l => {
-    if (!l) return false;
-    if (!nodeMap.has(l.source.id) || !nodeMap.has(l.target.id)) return false;
-    if (selectedRelFilter !== 'all' && l.relationship.relationshipType !== selectedRelFilter) {
-      return false;
-    }
-    return true;
-  });
-
-  // Selected Business Relationship details
   const activeRelationshipWithSelected = useMemo(() => {
     if (!selectedNode || selectedNode.id === myBusiness.id) return null;
     return relationships.find(
@@ -178,7 +169,7 @@ export function SupplyChainGraph() {
         (r.sourceId === myBusiness.id && r.targetId === selectedNode.id) ||
         (r.sourceId === selectedNode.id && r.targetId === myBusiness.id)
     );
-  }, [selectedNode, myBusiness, relationships]);
+  }, [selectedNode, relationships, myBusiness.id]);
 
   const handleConnectSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,22 +180,41 @@ export function SupplyChainGraph() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-65px)] bg-slate-950 text-slate-100 overflow-hidden relative select-none">
-      {/* Top Universal Filter Bar */}
-      <div className="bg-slate-900/95 border-b border-slate-800 p-4 flex flex-wrap items-center justify-between gap-4 z-10 backdrop-blur-md">
+    <div
+      className="flex flex-col h-[calc(100vh-6rem)] rounded-3xl overflow-hidden glass-card select-none"
+      style={{
+        background: '#04070f',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      {/* Top Controls Toolbar */}
+      <div
+        className="p-4 px-6 flex flex-wrap items-center justify-between gap-4 z-20"
+        style={{
+          background: 'rgba(13,21,38,0.8)',
+          backdropFilter: 'blur(16px)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}
+      >
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-gradient-to-tr from-indigo-500 to-cyan-500 text-white shadow-md">
-            <Globe className="w-5 h-5" />
+          <div
+            className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+            style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.35)' }}
+          >
+            <Layers className="w-5 h-5 text-indigo-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-white tracking-tight">Universal Ecosystem Network</h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.3)' }}
+              >
                 Multi-Sector Mesh
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              Interactive relationship visualizer connecting tech, healthcare, manufacturing, creative, logistics, and consulting worldwide.
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Interactive relationship visualizer connecting tech, healthcare, manufacturing, creative, and consulting.
             </p>
           </div>
         </div>
@@ -212,16 +222,19 @@ export function SupplyChainGraph() {
         {/* Filter Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Industry Filter */}
-          <div className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
             <Filter className="w-3.5 h-3.5 text-slate-400" />
             <select
               value={selectedIndustryFilter}
               onChange={e => setSelectedIndustryFilter(e.target.value)}
               className="bg-transparent border-none text-xs text-slate-200 focus:outline-none cursor-pointer font-medium"
             >
-              <option value="all">All Industries ({businesses.length})</option>
+              <option value="all" style={{ background: '#0d1526' }}>All Sectors ({businesses.length})</option>
               {Object.keys(SECTOR_COLORS).map(ind => (
-                <option key={ind} value={ind}>
+                <option key={ind} value={ind} style={{ background: '#0d1526' }}>
                   {ind}
                 </option>
               ))}
@@ -229,16 +242,19 @@ export function SupplyChainGraph() {
           </div>
 
           {/* Relationship Filter */}
-          <div className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
+          <div
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
             <Handshake className="w-3.5 h-3.5 text-slate-400" />
             <select
               value={selectedRelFilter}
               onChange={e => setSelectedRelFilter(e.target.value)}
-              className="bg-transparent border-none text-xs text-slate-200 focus:outline-none cursor-pointer font-medium"
+              className="bg-transparent border-none text-xs text-slate-200 focus:outline-none cursor-pointer font-medium max-w-[150px] truncate"
             >
-              <option value="all">All Relationship Types</option>
+              <option value="all" style={{ background: '#0d1526' }}>All Relationships</option>
               {UNIVERSAL_RELATIONSHIP_TYPES.map(rel => (
-                <option key={rel.id} value={rel.id}>
+                <option key={rel.id} value={rel.id} style={{ background: '#0d1526' }}>
                   {rel.label}
                 </option>
               ))}
@@ -246,10 +262,13 @@ export function SupplyChainGraph() {
           </div>
 
           {/* Zoom controls */}
-          <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
+          <div
+            className="flex items-center gap-1 p-1 rounded-xl"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
             <button
               onClick={() => setZoomLevel(prev => Math.max(0.6, prev - 0.1))}
-              className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white"
               title="Zoom out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
@@ -257,7 +276,7 @@ export function SupplyChainGraph() {
             <span className="text-[11px] font-mono px-1 text-slate-400">{Math.round(zoomLevel * 100)}%</span>
             <button
               onClick={() => setZoomLevel(prev => Math.min(1.4, prev + 0.1))}
-              className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white"
               title="Zoom in"
             >
               <ZoomIn className="w-3.5 h-3.5" />
@@ -267,10 +286,10 @@ export function SupplyChainGraph() {
           {/* Connect Enterprise CTA */}
           <button
             onClick={() => setIsConnectModalOpen(true)}
-            className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-semibold rounded-xl text-xs shadow-md transition-all flex items-center gap-1.5"
+            className="btn-accent text-xs py-1.5"
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            Form New Connection
+            Form Connection
           </button>
         </div>
       </div>
@@ -278,7 +297,7 @@ export function SupplyChainGraph() {
       {/* Main Canvas & Detail Sidebar */}
       <div className="flex-1 flex relative overflow-hidden">
         {/* Interactive SVG Network Canvas */}
-        <div className="flex-1 h-full overflow-auto flex items-center justify-center p-8 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px]">
+        <div className="flex-1 h-full overflow-auto flex items-center justify-center p-8 bg-dot-pattern">
           <div
             style={{
               transform: `scale(${zoomLevel})`,
@@ -300,8 +319,8 @@ export function SupplyChainGraph() {
               </defs>
 
               {/* Orbital guide rings */}
-              <circle cx="500" cy="450" r="260" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 6" opacity="0.4" />
-              <circle cx="500" cy="450" r="380" fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="4 6" opacity="0.3" />
+              <circle cx="500" cy="450" r="260" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4 6" />
+              <circle cx="500" cy="450" r="380" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1" strokeDasharray="4 6" />
 
               {/* Dynamic Connection Beziers */}
               {filteredLinks.map((link, idx) => {
@@ -309,7 +328,6 @@ export function SupplyChainGraph() {
                 const isHovered = hoveredNodeId === link.source.id || hoveredNodeId === link.target.id;
                 const isSelected = selectedNode?.id === link.source.id || selectedNode?.id === link.target.id;
 
-                // Control point for smooth curved bezier
                 const midX = (link.source.x + link.target.x) / 2;
                 const midY = (link.source.y + link.target.y) / 2;
                 const dx = link.target.x - link.source.x;
@@ -324,9 +342,9 @@ export function SupplyChainGraph() {
                     <path
                       d={`M ${link.source.x} ${link.source.y} Q ${cx} ${cy} ${link.target.x} ${link.target.y}`}
                       fill="none"
-                      stroke={isSelected ? '#38bdf8' : isHovered ? '#60a5fa' : link.source.sectorColor}
+                      stroke={isSelected ? '#22d3ee' : isHovered ? '#818cf8' : link.source.sectorColor}
                       strokeWidth={isSelected ? 3.5 : isHovered ? 2.5 : 1.5}
-                      strokeOpacity={isSelected ? 0.95 : isHovered ? 0.8 : 0.4}
+                      strokeOpacity={isSelected ? 0.95 : isHovered ? 0.8 : 0.35}
                       strokeDasharray={link.relationship.status === 'collaborating' ? '6 4' : 'none'}
                       filter={isSelected ? 'url(#glow)' : undefined}
                     />
@@ -341,7 +359,7 @@ export function SupplyChainGraph() {
               const isSelected = selectedNode?.id === node.id;
               const isHovered = hoveredNodeId === node.id;
               const country = GLOBAL_COUNTRIES.find(c => c.code === node.business.location.countryCode) || GLOBAL_COUNTRIES[0];
-              const sector = SECTOR_COLORS[node.business.industry] || { bg: 'bg-slate-800', border: 'border-slate-600', text: 'text-slate-300', stroke: '#94a3b8' };
+              const sector = SECTOR_COLORS[node.business.industry] || { bg: 'rgba(255,255,255,0.05)', border: 'border-slate-700', text: 'text-slate-300', stroke: '#94a3b8' };
 
               return (
                 <div
@@ -354,14 +372,24 @@ export function SupplyChainGraph() {
                   onMouseEnter={() => setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
                   onClick={() => setSelectedNode(node.business)}
-                  className={`absolute cursor-pointer transition-all duration-300 group ${isCenter ? 'z-30' : isSelected ? 'z-20 scale-110' : 'z-10 hover:scale-105'
-                    }`}
+                  className={`absolute cursor-pointer transition-all duration-300 group ${
+                    isCenter ? 'z-30' : isSelected ? 'z-20 scale-110' : 'z-10 hover:scale-105'
+                  }`}
                 >
                   {isCenter ? (
                     // Center Hub Node (Your Business)
                     <div className="relative flex flex-col items-center">
-                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-400 p-0.5 shadow-2xl shadow-indigo-500/50 flex items-center justify-center animate-pulse">
-                        <div className="w-full h-full bg-slate-950 rounded-2xl flex flex-col items-center justify-center p-2 text-center">
+                      <div
+                        className="w-20 h-20 rounded-2xl p-0.5 shadow-2xl flex items-center justify-center animate-pulse"
+                        style={{
+                          background: 'linear-gradient(135deg, #6366f1, #22d3ee)',
+                          boxShadow: '0 0 40px rgba(99,102,241,0.5)',
+                        }}
+                      >
+                        <div
+                          className="w-full h-full rounded-2xl flex flex-col items-center justify-center p-2 text-center"
+                          style={{ background: '#080d1a' }}
+                        >
                           <Building2 className="w-6 h-6 text-cyan-400" />
                           <span className="text-[9px] font-black text-white mt-1 leading-tight line-clamp-1">
                             {node.business.name.split(' ')[0]}
@@ -369,7 +397,10 @@ export function SupplyChainGraph() {
                           <span className="text-[8px] font-bold text-cyan-400 uppercase">You (Hub)</span>
                         </div>
                       </div>
-                      <div className="mt-2 bg-slate-900/90 border border-cyan-500/50 px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap">
+                      <div
+                        className="mt-2 px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap"
+                        style={{ background: 'rgba(13,21,38,0.95)', border: '1px solid rgba(34,211,238,0.4)' }}
+                      >
                         {node.business.name}
                       </div>
                     </div>
@@ -377,12 +408,14 @@ export function SupplyChainGraph() {
                     // Satellite Enterprise Node
                     <div className="relative flex flex-col items-center">
                       <div
-                        className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center p-1 transition-all shadow-lg ${sector.bg} ${isSelected
-                          ? 'border-white ring-4 ring-cyan-400/50 shadow-cyan-500/40'
-                          : isHovered
+                        className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center p-1 transition-all shadow-lg ${
+                          isSelected
+                            ? 'border-white ring-4 ring-cyan-400/50 shadow-cyan-500/40'
+                            : isHovered
                             ? 'border-cyan-400 shadow-cyan-500/20'
                             : sector.border
-                          }`}
+                        }`}
+                        style={{ background: sector.bg }}
                       >
                         <div className="flex flex-col items-center justify-center text-center">
                           <span className="text-sm">{country.flag}</span>
@@ -394,10 +427,16 @@ export function SupplyChainGraph() {
 
                       {/* Floating pill badge */}
                       <div
-                        className={`mt-1.5 px-2 py-0.5 rounded-md text-[9px] font-semibold tracking-tight whitespace-nowrap max-w-[140px] truncate shadow-md ${isSelected
-                          ? 'bg-cyan-500 text-slate-950 font-bold'
-                          : 'bg-slate-900/90 text-slate-300 border border-slate-700'
-                          }`}
+                        className={`mt-1.5 px-2 py-0.5 rounded-md text-[9px] font-semibold tracking-tight whitespace-nowrap max-w-[140px] truncate shadow-md ${
+                          isSelected
+                            ? 'bg-cyan-400 text-slate-950 font-bold'
+                            : 'text-slate-300'
+                        }`}
+                        style={
+                          !isSelected
+                            ? { background: 'rgba(13,21,38,0.95)', border: '1px solid rgba(255,255,255,0.1)' }
+                            : {}
+                        }
                       >
                         {node.business.name}
                       </div>
@@ -411,7 +450,14 @@ export function SupplyChainGraph() {
 
         {/* Selected Entity Inspector Sidebar */}
         {selectedNode && (
-          <aside className="w-96 bg-slate-900 border-l border-slate-800 flex flex-col justify-between shrink-0 h-full p-5 overflow-y-auto z-20 shadow-2xl">
+          <aside
+            className="w-96 flex flex-col justify-between shrink-0 h-full p-5 overflow-y-auto z-20"
+            style={{
+              background: 'rgba(13,21,38,0.98)',
+              borderLeft: '1px solid rgba(255,255,255,0.06)',
+              boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
+            }}
+          >
             <div className="space-y-4">
               {/* Header */}
               <div className="flex items-start justify-between">
@@ -420,12 +466,14 @@ export function SupplyChainGraph() {
                     {selectedNode.id === myBusiness.id ? 'Your Enterprise' : 'Ecosystem Partner'}
                   </span>
                   <h3 className="text-base font-black text-white leading-tight mt-0.5">{selectedNode.name}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">{selectedNode.tagline || selectedNode.description}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {selectedNode.tagline || selectedNode.description}
+                  </p>
                 </div>
                 {selectedNode.id !== myBusiness.id && (
                   <button
                     onClick={() => setSelectedNode(myBusiness)}
-                    className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                    className="p-1 text-slate-400 hover:text-white rounded-lg"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -434,22 +482,22 @@ export function SupplyChainGraph() {
 
               {/* Key Attributes */}
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
-                  <span className="text-[10px] text-slate-400 font-medium">Industry Domain</span>
+                <div className="p-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-[10px] text-slate-500 font-medium block">Sector</span>
                   <p className="font-bold text-white truncate mt-0.5">{selectedNode.industry}</p>
                 </div>
-                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
-                  <span className="text-[10px] text-slate-400 font-medium">Business Model</span>
+                <div className="p-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-[10px] text-slate-500 font-medium block">Model</span>
                   <p className="font-bold text-cyan-400 truncate mt-0.5">{selectedNode.primaryBusinessModel}</p>
                 </div>
-                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
-                  <span className="text-[10px] text-slate-400 font-medium">Location</span>
+                <div className="p-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-[10px] text-slate-500 font-medium block">Location</span>
                   <p className="font-bold text-white truncate mt-0.5">
                     {selectedNode.location.city}, {selectedNode.location.country}
                   </p>
                 </div>
-                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
-                  <span className="text-[10px] text-slate-400 font-medium">Network Trust</span>
+                <div className="p-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-[10px] text-slate-500 font-medium block">Reputation</span>
                   <p className="font-bold text-emerald-400 mt-0.5">
                     ★ {selectedNode.rating} ({selectedNode.trustScore}/100)
                   </p>
@@ -458,20 +506,32 @@ export function SupplyChainGraph() {
 
               {/* Relationship Status Section */}
               {activeRelationshipWithSelected ? (
-                <div className="p-3.5 bg-indigo-950/40 rounded-xl border border-indigo-500/40 space-y-2">
+                <div
+                  className="p-3.5 rounded-xl space-y-2"
+                  style={{
+                    background: 'rgba(99,102,241,0.1)',
+                    border: '1px solid rgba(99,102,241,0.25)',
+                  }}
+                >
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-indigo-300 flex items-center gap-1.5">
                       <Handshake className="w-4 h-4 text-cyan-400" />
                       {activeRelationshipWithSelected.relationshipType || 'Connected Partner'}
                     </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}
+                    >
                       Active
                     </span>
                   </div>
 
                   <p className="text-xs text-slate-300">{activeRelationshipWithSelected.category}</p>
 
-                  <div className="text-[11px] text-slate-400 space-y-1 pt-1 border-t border-indigo-900/60">
+                  <div
+                    className="text-[11px] space-y-1 pt-1.5"
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}
+                  >
                     <div className="flex justify-between">
                       <span>Volume / Terms:</span>
                       <span className="font-mono text-slate-200">{activeRelationshipWithSelected.volumeMonthly || 'Synergy'}</span>
@@ -483,30 +543,19 @@ export function SupplyChainGraph() {
                       </span>
                     </div>
                   </div>
-
-                  {activeRelationshipWithSelected.sharedProjects && (
-                    <div className="pt-2 border-t border-indigo-900/60">
-                      <span className="text-[10px] font-bold uppercase text-slate-400">Collaborative Projects:</span>
-                      <ul className="mt-1 space-y-1 text-xs text-slate-200">
-                        {activeRelationshipWithSelected.sharedProjects.map((p, i) => (
-                          <li key={i} className="flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                            {p}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               ) : selectedNode.id !== myBusiness.id ? (
-                <div className="p-3 bg-slate-800/60 rounded-xl border border-dashed border-slate-700 text-center space-y-2">
+                <div
+                  className="p-3.5 rounded-xl text-center space-y-2"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)' }}
+                >
                   <p className="text-xs text-slate-400">No active relationship formalized yet with this enterprise.</p>
                   <button
                     onClick={() => {
                       setTargetBizToConnect(selectedNode.id);
                       setIsConnectModalOpen(true);
                     }}
-                    className="w-full py-2 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
+                    className="btn-accent text-xs w-full py-2"
                   >
                     <Handshake className="w-3.5 h-3.5" />
                     Connect & Partner
@@ -524,11 +573,12 @@ export function SupplyChainGraph() {
                     selectedNode.offerings.map(off => (
                       <div
                         key={off.id}
-                        className="p-2 bg-slate-800/80 rounded-lg border border-slate-700/50 flex items-center justify-between text-xs"
+                        className="p-2.5 rounded-xl flex items-center justify-between text-xs"
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
                       >
                         <div className="min-w-0 pr-2">
-                          <p className="font-bold text-slate-200 truncate">{off.name}</p>
-                          <span className="text-[10px] text-slate-400 capitalize">
+                          <p className="font-bold text-white truncate">{off.name}</p>
+                          <span className="text-[10px] text-slate-500 capitalize">
                             {off.type} • {off.pricingModel.replace('_', ' ')}
                           </span>
                         </div>
@@ -545,10 +595,10 @@ export function SupplyChainGraph() {
             </div>
 
             {/* Bottom Actions */}
-            <div className="pt-4 border-t border-slate-800 space-y-2">
+            <div className="pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
               <button
                 onClick={() => setInspectingBusiness(selectedNode)}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-slate-700 shadow-xs"
+                className="btn-secondary text-xs w-full py-2.5"
               >
                 <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
                 View Full Universal Profile
@@ -560,11 +610,26 @@ export function SupplyChainGraph() {
 
       {/* Connection Builder Modal */}
       {isConnectModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Handshake className="w-5 h-5 text-cyan-400" />
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div
+            className="rounded-3xl w-full max-w-lg p-6 space-y-5 animate-fade-in-up"
+            style={{
+              background: '#0d1526',
+              border: '1px solid rgba(99,102,241,0.3)',
+              boxShadow: '0 0 80px rgba(0,0,0,0.8), 0 0 40px rgba(99,102,241,0.2)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between pb-3"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)' }}
+                >
+                  <Handshake className="w-5 h-5 text-indigo-400" />
+                </div>
                 <h3 className="text-base font-bold text-white">Form Universal Business Relationship</h3>
               </div>
               <button onClick={() => setIsConnectModalOpen(false)} className="text-slate-400 hover:text-white">
@@ -572,18 +637,19 @@ export function SupplyChainGraph() {
               </button>
             </div>
 
-            <form onSubmit={handleConnectSubmit} className="space-y-4">
+            <form onSubmit={handleConnectSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Target Enterprise</label>
+                <label className="block text-slate-300 font-semibold mb-1">Target Enterprise</label>
                 <select
                   value={targetBizToConnect}
                   onChange={e => setTargetBizToConnect(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full rounded-xl px-3 py-2.5 text-white focus:outline-none cursor-pointer"
+                  style={{ background: '#0d1526', border: '1px solid rgba(255,255,255,0.1)' }}
                 >
                   {businesses
                     .filter(b => b.id !== myBusiness.id)
                     .map(b => (
-                      <option key={b.id} value={b.id}>
+                      <option key={b.id} value={b.id} style={{ background: '#0d1526' }}>
                         {b.name} ({b.industry} — {b.location.city}, {b.location.country})
                       </option>
                     ))}
@@ -591,14 +657,15 @@ export function SupplyChainGraph() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Relationship Type</label>
+                <label className="block text-slate-300 font-semibold mb-1">Relationship Type</label>
                 <select
                   value={selectedRelationshipType}
                   onChange={e => setSelectedRelationshipType(e.target.value as UniversalRelationshipType)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full rounded-xl px-3 py-2.5 text-white focus:outline-none cursor-pointer"
+                  style={{ background: '#0d1526', border: '1px solid rgba(255,255,255,0.1)' }}
                 >
                   {UNIVERSAL_RELATIONSHIP_TYPES.map(rel => (
-                    <option key={rel.id} value={rel.id}>
+                    <option key={rel.id} value={rel.id} style={{ background: '#0d1526' }}>
                       {rel.label} — {rel.description}
                     </option>
                   ))}
@@ -606,35 +673,39 @@ export function SupplyChainGraph() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Engagement Description / Scope</label>
+                <label className="block text-slate-300 font-semibold mb-1">Engagement Description / Scope</label>
                 <input
                   type="text"
                   value={connectionCategory}
                   onChange={e => setConnectionCategory(e.target.value)}
                   placeholder="e.g. Cross-border Cloud Infrastructure & Strategic Marketing Retainer"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full rounded-xl px-3 py-2.5 text-white placeholder-slate-500 focus:outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
                 />
               </div>
 
-              <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/60 text-xs text-slate-400">
-                <p className="font-semibold text-slate-300">Universal Network Principle:</p>
+              <div
+                className="p-3 rounded-xl leading-relaxed"
+                style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', color: 'var(--text-secondary)' }}
+              >
+                <p className="font-semibold text-indigo-300">Universal Network Principle:</p>
                 <p className="mt-0.5">
                   Connecting establishes a professional link on the graph. Commercial contracts, milestones, and transactions remain independent and can be formalized in the Deals Ledger.
                 </p>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div
+                className="flex justify-end gap-2 pt-3"
+                style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+              >
                 <button
                   type="button"
                   onClick={() => setIsConnectModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold"
+                  className="btn-secondary text-xs"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white rounded-xl text-xs font-bold shadow-md"
-                >
+                <button type="submit" className="btn-primary text-xs">
                   Establish Connection
                 </button>
               </div>
